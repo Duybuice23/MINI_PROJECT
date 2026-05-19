@@ -2,14 +2,14 @@
 #include <Wire.h>
 #include <ArduinoJson.h>
 #include "task_webserver.h"
-#include <mq2.h>
+#include "soil_moisture_sensor.h"
 DHT20 dht20;
 // I2C LCD: address 33 (0x21), 16x2
 LiquidCrystal_I2C lcd(33, 16, 2);
-
 // Khai báo lại các hàm cho đúng
-static void updateLcd(float temperature, float humidity, float gas);
-static void sendSensorToWeb(float temperature, float humidity);
+static float convertSoilMoistureToPercent(int rawAdc);
+static void updateLcd(float temperature, float humidity, float soilMoisturePercent);
+static void sendSensorToWeb(float temperature, float humidity, float soilMoisturePercent);
 
 void temp_humi_monitor(void *pvParameters)
 {
@@ -19,7 +19,7 @@ void temp_humi_monitor(void *pvParameters)
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("DHT20 starting...");
+  lcd.print("Starting...");
   lcd.setCursor(0, 1);
   lcd.print("Please wait");
   vTaskDelay(pdMS_TO_TICKS(1500));
@@ -29,7 +29,10 @@ void temp_humi_monitor(void *pvParameters)
     dht20.read();
     float temperature = dht20.getTemperature();
     float humidity    = dht20.getHumidity();
-    int gas = analogRead(MQ2_PIN);
+    int soilMoistureRaw = analogRead(SOIL_MOISTURE_PIN);
+    float soilMoisturePercent = convertSoilMoistureToPercent(soilMoistureRaw);
+    bool pumpShouldOn = false;
+    static bool lastPumpState = false;
 
     if (isnan(temperature) || isnan(humidity))
     {
@@ -38,35 +41,75 @@ void temp_humi_monitor(void *pvParameters)
       humidity    = -1.0f;
     }
 
-    // Cập nhật giá trị thô toàn cục
     glob_temperature = temperature;
     glob_humidity    = humidity;
-    glob_gas = gas;
-    // GỌI HÀM CẬP NHẬT LCD (Đã fix lỗi màn hình đơ)
-    updateLcd(temperature, humidity, gas);
+    glob_soil_moisture = soilMoisturePercent;
+    glob_soil_moisture_raw = soilMoistureRaw;
+    if (glob_irrigation_mode == 0)
+    {
+      pumpShouldOn = (soilMoistureRaw < SOIL_MOISTURE_RAW_THRESHOLD);
+    }
+    else if (glob_irrigation_mode == 1)
+    {
+      pumpShouldOn = glob_manual_pump_state;
+    }
+    else if (glob_irrigation_mode == 2)
+    {
+      unsigned long now = millis();
+      unsigned long elapsed = now - glob_irrigation_timer_started_ms;
+      bool timerOn = glob_irrigation_timer_active && (elapsed < glob_irrigation_duration_ms);
+      if (!timerOn)
+      {
+        glob_irrigation_timer_active = false;
+      }
+      pumpShouldOn = timerOn;
+    }
 
-    // Gửi dữ liệu lên webserver qua WebSocket
-    sendSensorToWeb(temperature, humidity);
+    glob_pump_enabled = pumpShouldOn;
+
+    if (pumpShouldOn != lastPumpState)
+    {
+      lastPumpState = pumpShouldOn;
+      if (xPumpSemaphore != nullptr)
+      {
+        xSemaphoreGive(xPumpSemaphore);
+      }
+    }
+
+    updateLcd(temperature, humidity, soilMoisturePercent);
+
+    sendSensorToWeb(temperature, humidity, soilMoisturePercent);
 
     Serial.print("[DHT20] H: ");
     Serial.print(humidity);
     Serial.print("%  T: ");
     Serial.print(temperature);
     Serial.print(" C ");
-    Serial.print("G: ");
-    Serial.println(gas);
+    Serial.print(" Soil: ");
+    Serial.print(soilMoisturePercent, 0);
+    Serial.print("% (raw=");
+    Serial.print(soilMoistureRaw);
+    Serial.print(") Pump:");
+    Serial.println(pumpShouldOn ? "ON" : "OFF");
     vTaskDelay(pdMS_TO_TICKS(2000));
   }
 }
 
-// Bỏ tham số DisplayState đi vì không dùng nữa
-static void updateLcd(float temperature, float humidity, float gas)
+static float convertSoilMoistureToPercent(int rawAdc)
+{
+  long mapped = map(rawAdc, SOIL_ADC_DRY, SOIL_ADC_WET, 0, 100);
+  mapped = constrain(mapped, 0, 100);
+  return (float)mapped;
+}
+
+static void updateLcd(float temperature, float humidity, float soilMoisturePercent)
 {
   lcd.clear();
 
   lcd.setCursor(0, 0);
-  lcd.print("Gas: ");
-  lcd.print(gas, 0); 
+  lcd.print("Soil: ");
+  lcd.print(soilMoisturePercent, 0);
+  lcd.print("%");
 
   // Dòng 2: In nhiệt độ & độ ẩm
   lcd.setCursor(0, 1);
@@ -78,13 +121,15 @@ static void updateLcd(float temperature, float humidity, float gas)
   lcd.print("%");
 }
 
-static void sendSensorToWeb(float temperature, float humidity)
+static void sendSensorToWeb(float temperature, float humidity, float soilMoisturePercent)
 {
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<192> doc;
   doc["page"] = "sensor";
   doc["temp"] = temperature;
   doc["humi"] = humidity;
-  
+  doc["soilMoisture"] = soilMoisturePercent;
+  doc["pumpState"] = glob_pump_enabled;
+
   String json;
   serializeJson(doc, json);
   Webserver_sendata(json);

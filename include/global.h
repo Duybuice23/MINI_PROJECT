@@ -6,76 +6,27 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
-// ====== Giá trị cảm biến toàn cục ======
+// ====== Gia tri cam bien toan cuc ======
 #define LED_GPIO 48
 #define NEO_PIN 45
-#define LED_COUNT 1 
+#define LED_COUNT 1
+#define PUMP_GPIO_1 2
+#define PUMP_GPIO_2 3
+#define SOIL_MOISTURE_RAW_THRESHOLD 1200
 extern float glob_temperature;
 extern float glob_humidity;
-extern float glob_gas;
+extern float glob_soil_moisture;
+extern int   glob_soil_moisture_raw;
+extern volatile bool glob_pump_enabled;
+extern volatile uint8_t glob_irrigation_mode; // 0:auto, 1:manual, 2:timer
+extern volatile uint32_t glob_irrigation_duration_ms;
+extern volatile bool glob_manual_pump_state;
+extern volatile bool glob_irrigation_timer_active;
+extern volatile uint32_t glob_irrigation_timer_started_ms;
 
-// ====== Ngưỡng & mức nhiệt độ / độ ẩm (giá trị mặc định) ======
-#define TEMP_COLD_THRESHOLD   24.0f
-#define TEMP_HOT_THRESHOLD    32.0f
-
-#define HUMI_DRY_THRESHOLD    30.0f
-#define HUMI_HUMID_THRESHOLD  80.0f
-
-enum TempLevel : uint8_t {
-  TEMP_LEVEL_COLD = 0,
-  TEMP_LEVEL_NORMAL,
-  TEMP_LEVEL_HOT
-};
-
-enum HumiLevel : uint8_t {
-  HUMI_LEVEL_DRY = 0,
-  HUMI_LEVEL_OK,
-  HUMI_LEVEL_HUMID
-};
-
-enum DisplayState : uint8_t {
-  DISPLAY_STATE_NORMAL = 0,
-  DISPLAY_STATE_WARNING,
-  DISPLAY_STATE_CRITICAL
-};
-
-// Cấu hình nháy LED theo nhiệt độ (ms)
-struct TempLedConfig {
-  uint16_t on_ms;
-  uint16_t off_ms;
-};
-
-// Cấu hình màu NeoPixel theo độ ẩm (RGB)
-struct NeoColorConfig {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-};
-
-// Các mức hiện tại, được temp_humi_monitor cập nhật
-extern volatile uint8_t glob_temp_level;
-extern volatile uint8_t glob_humi_level;
-extern volatile uint8_t glob_display_state;
-
-// Ngưỡng runtime có thể chỉnh từ WebUI
-extern float tempColdThreshold;
-extern float tempHotThreshold;
-extern float humiDryThreshold;
-extern float humiHumidThreshold;
-
-// Cấu hình LED runtime
-extern TempLedConfig tempLedConfig[3];
-extern NeoColorConfig neoColorConfig[3];
-
-// Cho phép bật/tắt LED từ Web UI
-extern volatile bool glob_temp_led_enabled;
-extern volatile bool glob_humi_led_enabled;
-
-// ====== TinyML runtime result (cho CoreIoT & WebServer) ======
-extern float tinyml_score;
-extern float tinyml_accuracy;
-extern bool  tinyml_pred_anomaly;
-extern bool  tinyml_gt_anomaly;
+// Cho phep bat/tat LED tu Web UI
+extern volatile bool glob_led01_enabled;
+extern volatile bool glob_led02_enabled;
 
 // ====== WiFi / CoreIoT config ======
 extern String WIFI_SSID;
@@ -84,7 +35,7 @@ extern String CORE_IOT_TOKEN;
 extern String CORE_IOT_SERVER;
 extern String CORE_IOT_PORT;
 
-// ====== WiFi AP dùng cho main_server_task ======
+// ====== WiFi AP dung cho main_server_task ======
 extern String ssid;
 extern String password;
 
@@ -92,16 +43,15 @@ extern String password;
 extern String wifi_ssid;
 extern String wifi_password;
 
-// Cờ báo đã có Internet
+// Co bao da co Internet
 extern bool isWifiConnected;
 
-// Semaphore báo có internet 
+// Semaphore bao co internet
 extern SemaphoreHandle_t xBinarySemaphoreInternet;
 
-// ====== Semaphore đồng bộ các task  ======
-// Được temp_humi_monitor "give" khi mức nhiệt thay đổi → Task LED dùng.
-extern SemaphoreHandle_t xTempLedSemaphore;
-// Được temp_humi_monitor "give" khi mức ẩm thay đổi → Task NeoPixel dùng.
-extern SemaphoreHandle_t xHumiNeoSemaphore;
+// ====== Semaphore dong bo cac task ======
+extern SemaphoreHandle_t xLed01Semaphore;
+extern SemaphoreHandle_t xLed02Semaphore;
+extern SemaphoreHandle_t xPumpSemaphore;
 
 #endif

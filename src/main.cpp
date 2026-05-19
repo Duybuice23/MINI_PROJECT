@@ -3,6 +3,7 @@
 #include "led_blinky.h"
 #include "neo_blinky.h"
 #include "temp_humi_monitor.h"
+#include "pump_control.h"
 // #include "tinyml.h"
 #include "coreiot.h"
 
@@ -43,6 +44,14 @@ void setup()
               4096,
               nullptr,
               3,   // ưu tiên nhỉnh hơn vì feed dữ liệu cho các task khác
+              nullptr);
+
+  // Task 4: Dieu khien bom theo do am dat (GPIO 2/3)
+  xTaskCreate(pump_control_task,
+              "Task Pump Control",
+              2048,
+              nullptr,
+              2,
               nullptr);
 
   // // Task 4: WebServer + AP + STA mode

@@ -1,11 +1,10 @@
 #include "coreiot.h"
+#include "task_webserver.h"
 #include <ctype.h>
 #include <string.h>  
 
 WiFiClient   espClient;
 PubSubClient client(espClient);
-
-
 
 static bool equalsIgnoreCase(const char *a, const char *b)
 {
@@ -65,15 +64,59 @@ static void sendRpcResponse(const char *requestId, const StaticJsonDocument<128>
   Serial.println(ok ? "OK" : "FAILED");
 }
 
-static void publishLedStates()
+void coreiot_publish_led_states()
 {
   StaticJsonDocument<128> doc;
-  doc["tempLed"] = glob_temp_led_enabled;
-  doc["humiLed"] = glob_humi_led_enabled;
+  doc["led01"] = glob_led01_enabled;
+  doc["led02"] = glob_led02_enabled;
 
   String json;
   serializeJson(doc, json);
   client.publish("v1/devices/me/attributes", json.c_str());
+}
+
+static void coreiot_publish_irrigation_states()
+{
+  StaticJsonDocument<192> doc;
+  doc["irrigationMode"] = glob_irrigation_mode;
+  doc["irrigationDurationSec"] = glob_irrigation_duration_ms / 1000U;
+  doc["manualPumpState"] = glob_manual_pump_state;
+  doc["timerActive"] = glob_irrigation_timer_active;
+  doc["pumpState"] = glob_pump_enabled;
+
+  String json;
+  serializeJson(doc, json);
+  client.publish("v1/devices/me/attributes", json.c_str());
+}
+
+static uint8_t parseIrrigationMode(const JsonVariantConst &param)
+{
+  if (param.is<int>())
+  {
+    int mode = param.as<int>();
+    if (mode >= 0 && mode <= 2) return (uint8_t)mode;
+  }
+
+  const char *s = param.as<const char*>();
+  if (!s) return glob_irrigation_mode;
+  if (equalsIgnoreCase(s, "auto")) return 0;
+  if (equalsIgnoreCase(s, "manual")) return 1;
+  if (equalsIgnoreCase(s, "timer")) return 2;
+  return glob_irrigation_mode;
+}
+
+static void broadcastDeviceStateToWebUI(const char *name, bool isOn, int gpio)
+{
+  StaticJsonDocument<128> wsDoc;
+  wsDoc["page"] = "device";
+  JsonObject v = wsDoc.createNestedObject("value");
+  v["name"] = name;
+  v["status"] = isOn ? "ON" : "OFF";
+  v["gpio"] = gpio;
+
+  String out;
+  serializeJson(wsDoc, out);
+  Webserver_sendata(out);
 }
 
 void callback(char* topic, byte* payload, unsigned int length)
@@ -100,51 +143,161 @@ void callback(char* topic, byte* payload, unsigned int length)
   JsonVariantConst params = doc["params"];
 
   if (!method) return;
-
-  // ----- RPC SET: Bật/tắt LED nhiệt độ -----
-  if (strcmp(method, "setTempLed") == 0)
+  if (strcmp(method, "setLed01") == 0)
   {
     bool newState = rpcParamToBool(params);
-    glob_temp_led_enabled = newState;
+    glob_led01_enabled = newState;
     
     // Gửi response NGAY LẬP TỨC
-    publishLedStates();
+    coreiot_publish_led_states();
+    broadcastDeviceStateToWebUI("LED1", glob_led01_enabled, LED_GPIO);
     StaticJsonDocument<128> resp;
-    resp["method"]  = "setTempLed";
+    resp["method"]  = "setLed01";
     resp["success"] = true;
-    resp["tempLed"] = glob_temp_led_enabled;
+    resp["led01"] = glob_led01_enabled;
     sendRpcResponse(requestId, resp);
   }
   // ----- RPC SET: Bật/tắt NeoPixel -----
-  else if (strcmp(method, "setHumiLed") == 0)
+  else if (strcmp(method, "setLed02") == 0)
   {
     bool newState = rpcParamToBool(params);
-    glob_humi_led_enabled = newState;
+    glob_led02_enabled = newState;
     
     // Kích hoạt semaphore ngay để task LED phản hồi
-    if (xHumiNeoSemaphore != nullptr)
-      xSemaphoreGive(xHumiNeoSemaphore);
+    if (xLed02Semaphore != nullptr)
+      xSemaphoreGive(xLed02Semaphore);
 
-    publishLedStates();
+    coreiot_publish_led_states();
+    broadcastDeviceStateToWebUI("LED2", glob_led02_enabled, NEO_PIN);
     StaticJsonDocument<128> resp;
-    resp["method"]  = "setHumiLed";
+    resp["method"]  = "setLed02";
     resp["success"] = true;
-    resp["humiLed"] = glob_humi_led_enabled;
+    resp["led02"] = glob_led02_enabled;
     sendRpcResponse(requestId, resp);
   }
   // ----- RPC GET -----
-  else if (strcmp(method, "getTempLed") == 0)
+  else if (strcmp(method, "getLed01") == 0)
   {
     StaticJsonDocument<128> resp;
-    resp["method"]  = "getTempLed";
-    resp["tempLed"] = glob_temp_led_enabled;
+    resp["method"]  = "getLed01";
+    resp["led01"] = glob_led01_enabled;
     sendRpcResponse(requestId, resp);
   }
-  else if (strcmp(method, "getHumiLed") == 0)
+  else if (strcmp(method, "getLed02") == 0)
   {
     StaticJsonDocument<128> resp;
-    resp["method"]  = "getHumiLed";
-    resp["humiLed"] = glob_humi_led_enabled;
+    resp["method"]  = "getLed02";
+    resp["led02"] = glob_led02_enabled;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "setIrrigationMode") == 0)
+  {
+    glob_irrigation_mode = parseIrrigationMode(params);
+    if (glob_irrigation_mode != 2)
+    {
+      glob_irrigation_timer_active = false;
+    }
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+    coreiot_publish_irrigation_states();
+    StaticJsonDocument<128> resp;
+    resp["method"] = "setIrrigationMode";
+    resp["irrigationMode"] = glob_irrigation_mode;
+    resp["success"] = true;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "getIrrigationMode") == 0)
+  {
+    StaticJsonDocument<128> resp;
+    resp["method"] = "getIrrigationMode";
+    resp["irrigationMode"] = glob_irrigation_mode;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "setIrrigationDuration") == 0)
+  {
+    uint32_t durationSec = 30U;
+    if (params.is<unsigned long>())
+    {
+      durationSec = params.as<unsigned long>();
+    }
+    else if (params.is<int>())
+    {
+      int value = params.as<int>();
+      if (value > 0) durationSec = (uint32_t)value;
+    }
+    durationSec = constrain(durationSec, 5U, 3600U);
+    glob_irrigation_duration_ms = durationSec * 1000U;
+    coreiot_publish_irrigation_states();
+
+    StaticJsonDocument<128> resp;
+    resp["method"] = "setIrrigationDuration";
+    resp["irrigationDurationSec"] = durationSec;
+    resp["success"] = true;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "getIrrigationDuration") == 0)
+  {
+    StaticJsonDocument<128> resp;
+    resp["method"] = "getIrrigationDuration";
+    resp["irrigationDurationSec"] = glob_irrigation_duration_ms / 1000U;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "setPumpManual") == 0)
+  {
+    glob_manual_pump_state = rpcParamToBool(params);
+    glob_irrigation_mode = 1;
+    glob_irrigation_timer_active = false;
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+    coreiot_publish_irrigation_states();
+
+    StaticJsonDocument<128> resp;
+    resp["method"] = "setPumpManual";
+    resp["manualPumpState"] = glob_manual_pump_state;
+    resp["irrigationMode"] = glob_irrigation_mode;
+    resp["success"] = true;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "startIrrigationTimer") == 0)
+  {
+    if (params.is<int>() && params.as<int>() > 0)
+    {
+      uint32_t durationSec = constrain((uint32_t)params.as<int>(), 5U, 3600U);
+      glob_irrigation_duration_ms = durationSec * 1000U;
+    }
+    glob_irrigation_mode = 2;
+    glob_irrigation_timer_started_ms = millis();
+    glob_irrigation_timer_active = true;
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+    coreiot_publish_irrigation_states();
+
+    StaticJsonDocument<128> resp;
+    resp["method"] = "startIrrigationTimer";
+    resp["timerActive"] = true;
+    resp["irrigationDurationSec"] = glob_irrigation_duration_ms / 1000U;
+    resp["success"] = true;
+    sendRpcResponse(requestId, resp);
+  }
+  else if (strcmp(method, "stopIrrigationTimer") == 0)
+  {
+    glob_irrigation_timer_active = false;
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+    coreiot_publish_irrigation_states();
+
+    StaticJsonDocument<128> resp;
+    resp["method"] = "stopIrrigationTimer";
+    resp["timerActive"] = false;
+    resp["success"] = true;
     sendRpcResponse(requestId, resp);
   }
 }
@@ -173,16 +326,15 @@ static void reconnect()
     {
       Serial.println(" Connected!");
       client.subscribe("v1/devices/me/rpc/request/+");
-      publishLedStates();
+      coreiot_publish_led_states();
+      coreiot_publish_irrigation_states();
     }
     else
     {
       Serial.print(" Failed (rc=");
       Serial.print(client.state());
       Serial.println(")");
-      // Không delay 5s ở đây để tránh block các task khác quá lâu
-      // Task loop sẽ lo việc chờ đợi
-    }
+     }
   }
 }
 
@@ -218,7 +370,9 @@ void coreiot_task(void *pvParameters)
         StaticJsonDocument<256> doc;
         doc["temperature"] = glob_temperature;
         doc["humidity"]    = glob_humidity;
-        doc["gas"] = glob_gas;
+        doc["soilMoisture"] = glob_soil_moisture;
+        doc["pumpState"] = glob_pump_enabled;
+        doc["irrigationMode"] = glob_irrigation_mode;
         String payload;
         serializeJson(doc, payload);
         client.publish("v1/devices/me/telemetry", payload.c_str());
@@ -228,3 +382,4 @@ void coreiot_task(void *pvParameters)
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
+
