@@ -9,7 +9,7 @@ void Webserver_sendata(String data)
 {
     if (ws.count() > 0)
     {
-        ws.textAll(data); // Gửi đến tất cả client đang kết nối
+        ws.textAll(data);
         Serial.println("Đã gửi dữ liệu qua WebSocket: " + data);
     }
     else
@@ -36,7 +36,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
         {
             String message;
             message += String((char *)data).substring(0, len);
-            // parseJson(message, true);
+
             handleWebSocketMessage(message);
         }
     }
@@ -72,3 +72,4 @@ void Webserver_reconnect()
     }
     ElegantOTA.loop();
 }
+

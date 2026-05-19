@@ -29,40 +29,40 @@ void processSharedAttributes(const Shared_Attribute_Data &data)
 {
     for (auto it = data.begin(); it != data.end(); ++it)
     {
-        // if (strcmp(it->key().c_str(), BLINKING_INTERVAL_ATTR) == 0)
-        // {
-        //     const uint16_t new_interval = it->value().as<uint16_t>();
-        //     if (new_interval >= BLINKING_INTERVAL_MS_MIN && new_interval <= BLINKING_INTERVAL_MS_MAX)
-        //     {
-        //         blinkingInterval = new_interval;
-        //         Serial.print("Blinking interval is set to: ");
-        //         Y
-        //             Serial.println(new_interval);
-        //     }
-        // }
-        // if (strcmp(it->key().c_str(), LED_STATE_ATTR) == 0)
-        // {
-        //     ledState = it->value().as<bool>();
-        // digitalWrite(LED_PIN, ledState);
-        // Serial.print("LED state is set to: ");
-        // Serial.println(ledState);
-        // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     }
 }
 
 RPC_Response handleSetLogic(const char* methodName, bool state) {
     if (strcmp(methodName, "setLed01") == 0) {
         glob_led01_enabled = state;
-        // Bổ sung code điều khiển phần cứng nếu có: digitalWrite(PIN_1, state);
-    } 
+
+    }
     else if (strcmp(methodName, "setLed02") == 0) {
         glob_led02_enabled = state;
-        // Bổ sung code điều khiển phần cứng nếu có: digitalWrite(PIN_2, state);
+
     }
 
     Serial.printf("[%s] State changed to: %s\n", methodName, state ? "ON" : "OFF");
-    
-    // Trả về đúng tên method và trạng thái
+
+
     return RPC_Response(methodName, state);
 }
 
@@ -93,17 +93,17 @@ static RPC_Response startPumpPreset(const char* methodName, unsigned long durati
     return RPC_Response(methodName, true);
 }
 
-// --- HÀM XỬ LÝ CHUNG CHO LỆNH GET (LẤY TRẠNG THÁI) ---
+
 RPC_Response handleGetLogic(const char* methodName) {
     bool currentState = false;
-    
+
     if (strcmp(methodName, "getLed01") == 0) {
         currentState = glob_led01_enabled;
-    } 
+    }
     else if (strcmp(methodName, "getLed02") == 0) {
         currentState = glob_led02_enabled;
     }
-    
+
     return RPC_Response(methodName, currentState);
 }
 
@@ -154,7 +154,7 @@ void CORE_IOT_sendata(String mode, String feed, String data)
     }
     else
     {
-        // handle unknown mode
+
     }
 }
 
@@ -164,7 +164,7 @@ void CORE_IOT_reconnect()
     {
         if (!tb.connect(CORE_IOT_SERVER.c_str(), CORE_IOT_TOKEN.c_str(), CORE_IOT_PORT.toInt()))
         {
-            // Serial.println("Failed to connect");
+
             return;
         }
 
@@ -173,13 +173,13 @@ void CORE_IOT_reconnect()
         Serial.println("Subscribing for RPC...");
         if (!tb.RPC_Subscribe(callbacks.cbegin(), callbacks.cend()))
         {
-            // Serial.println("Failed to subscribe for RPC");
+
             return;
         }
 
         if (!tb.Shared_Attributes_Subscribe(attributes_callback))
         {
-            // Serial.println("Failed to subscribe for shared attribute updates");
+
             return;
         }
 
@@ -187,7 +187,7 @@ void CORE_IOT_reconnect()
 
         if (!tb.Shared_Attributes_Request(attribute_shared_request_callback))
         {
-            // Serial.println("Failed to request for shared attributes");
+
             return;
         }
         tb.sendAttributeData("localIp", WiFi.localIP().toString().c_str());
@@ -207,4 +207,5 @@ void CORE_IOT_reconnect()
         tb.loop();
     }
 }
+
 

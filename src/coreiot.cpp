@@ -1,7 +1,7 @@
 #include "coreiot.h"
 #include "task_webserver.h"
 #include <ctype.h>
-#include <string.h>  
+#include <string.h>
 
 WiFiClient   espClient;
 PubSubClient client(espClient);
@@ -34,16 +34,16 @@ static bool rpcParamToBool(const JsonVariantConst &param)
   return false;
 }
 
-// Lấy requestId từ topic "v1/devices/me/rpc/request/<id>"
+
 static const char* extractRequestId(const char *topic)
 {
   const char *p = strrchr(topic, '/');
   if (!p) return nullptr;
-  if (*(p + 1) == '\0') return nullptr; 
-  return p + 1;                        
+  if (*(p + 1) == '\0') return nullptr;
+  return p + 1;
 }
 
-// Publish response RPC
+
 static void sendRpcResponse(const char *requestId, const StaticJsonDocument<128> &doc)
 {
   if (!requestId)
@@ -121,10 +121,10 @@ static void broadcastDeviceStateToWebUI(const char *name, bool isOn, int gpio)
 
 void callback(char* topic, byte* payload, unsigned int length)
 {
-  // Lấy requestId từ topic
+
   const char *requestId = extractRequestId(topic);
 
-  // Copy payload sang buffer tạm
+
   char message[256];
   length = (length > sizeof(message) - 1) ? (sizeof(message) - 1) : length;
   memcpy(message, payload, length);
@@ -147,8 +147,8 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     bool newState = rpcParamToBool(params);
     glob_led01_enabled = newState;
-    
-    // Gửi response NGAY LẬP TỨC
+
+
     coreiot_publish_led_states();
     broadcastDeviceStateToWebUI("LED1", glob_led01_enabled, LED_GPIO);
     StaticJsonDocument<128> resp;
@@ -157,13 +157,13 @@ void callback(char* topic, byte* payload, unsigned int length)
     resp["led01"] = glob_led01_enabled;
     sendRpcResponse(requestId, resp);
   }
-  // ----- RPC SET: Bật/tắt NeoPixel -----
+
   else if (strcmp(method, "setLed02") == 0)
   {
     bool newState = rpcParamToBool(params);
     glob_led02_enabled = newState;
-    
-    // Kích hoạt semaphore ngay để task LED phản hồi
+
+
     if (xLed02Semaphore != nullptr)
       xSemaphoreGive(xLed02Semaphore);
 
@@ -175,7 +175,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     resp["led02"] = glob_led02_enabled;
     sendRpcResponse(requestId, resp);
   }
-  // ----- RPC GET -----
+
   else if (strcmp(method, "getLed01") == 0)
   {
     StaticJsonDocument<128> resp;
@@ -307,7 +307,7 @@ static void setup_coreiot()
   Serial.println("[CoreIoT] Waiting for internet...");
   if (xBinarySemaphoreInternet != nullptr)
   {
-    // Chờ tối đa 30s, nếu không có internet thì vẫn chạy để reconnect sau
+
     xSemaphoreTake(xBinarySemaphoreInternet, pdMS_TO_TICKS(30000));
   }
   Serial.println("[CoreIoT] Internet check done.");
@@ -342,26 +342,26 @@ void coreiot_task(void *pvParameters)
 {
   setup_coreiot();
 
-  // Biến dùng cho timer không chặn (Non-blocking)
+
   unsigned long lastTelemetrySend = 0;
-  const unsigned long TELEMETRY_INTERVAL = 5000; // 5 giây gửi 1 lần
+  const unsigned long TELEMETRY_INTERVAL = 5000;
 
   for (;;)
   {
     if (!client.connected())
     {
       reconnect();
-      // Nếu reconnect thất bại, delay 5s TRƯỚC khi thử lại để tránh spam
+
       if (!client.connected()) {
           vTaskDelay(pdMS_TO_TICKS(5000));
-          continue; 
+          continue;
       }
     }
-    
-    // [QUAN TRỌNG] Phải gọi hàm này liên tục để nhận tin nhắn RPC
+
+
     client.loop();
 
-    // Kiểm tra thời gian để gửi Telemetry (Không dùng delay)
+
     unsigned long now = millis();
     if (now - lastTelemetrySend > TELEMETRY_INTERVAL)
     {
@@ -378,8 +378,9 @@ void coreiot_task(void *pvParameters)
         client.publish("v1/devices/me/telemetry", payload.c_str());
     }
 
-    // Delay cực ngắn để nhường CPU cho các task khác, nhưng đủ nhanh để nhận RPC
+
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
+
 

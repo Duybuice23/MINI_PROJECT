@@ -12,7 +12,7 @@ void startSTA()
 {
     if (WIFI_SSID.isEmpty())
     {
-        // Không có SSID thì khỏi kết nối STA
+
         return;
     }
 
@@ -25,7 +25,7 @@ void startSTA()
     while (WiFi.status() != WL_CONNECTED)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
-        if (millis() - t0 > 15000) {   // timeout 15s để không treo vĩnh viễn
+        if (millis() - t0 > 15000) {
             Serial.println("❌ STA connect timeout");
             return;
         }

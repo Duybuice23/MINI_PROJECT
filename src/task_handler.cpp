@@ -104,6 +104,53 @@ void handleWebSocketMessage(String message)
     serializeJson(resp, out);
     Webserver_sendata(out);
   }
+  else if (page == "pump_force_off")
+  {
+    glob_irrigation_mode = 1;
+    glob_manual_pump_state = false;
+    glob_irrigation_timer_active = false;
+    glob_pump_enabled = false;
+
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+
+    StaticJsonDocument<192> resp;
+    resp["page"] = "pump_state";
+    JsonObject v = resp.createNestedObject("value");
+    v["pumpState"] = glob_pump_enabled;
+    v["timerActive"] = glob_irrigation_timer_active;
+    v["durationSec"] = glob_irrigation_duration_ms / 1000U;
+    v["mode"] = glob_irrigation_mode;
+
+    String out;
+    serializeJson(resp, out);
+    Webserver_sendata(out);
+  }
+  else if (page == "pump_restore_auto")
+  {
+    glob_irrigation_mode = 0;
+    glob_manual_pump_state = false;
+    glob_irrigation_timer_active = false;
+
+    if (xPumpSemaphore != nullptr)
+    {
+      xSemaphoreGive(xPumpSemaphore);
+    }
+
+    StaticJsonDocument<192> resp;
+    resp["page"] = "pump_state";
+    JsonObject v = resp.createNestedObject("value");
+    v["pumpState"] = glob_pump_enabled;
+    v["timerActive"] = glob_irrigation_timer_active;
+    v["durationSec"] = glob_irrigation_duration_ms / 1000U;
+    v["mode"] = glob_irrigation_mode;
+
+    String out;
+    serializeJson(resp, out);
+    Webserver_sendata(out);
+  }
   else if (page == "get_config")
   {
     StaticJsonDocument<512> resp;

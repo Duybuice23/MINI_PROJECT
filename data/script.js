@@ -245,6 +245,18 @@ function startPumpPreset(minutes) {
   });
 }
 
+function forcePumpOff() {
+  sendJson({
+    page: "pump_force_off",
+  });
+}
+
+function restorePumpAuto() {
+  sendJson({
+    page: "pump_restore_auto",
+  });
+}
+
 function updatePumpState(pumpVal) {
   if (!pumpVal) return;
 
@@ -348,3 +360,5 @@ window.confirmFactoryReset = function confirmFactoryReset() {
 };
 
 window.startPumpPreset = startPumpPreset;
+window.forcePumpOff = forcePumpOff;
+window.restorePumpAuto = restorePumpAuto;

@@ -4,9 +4,9 @@
 #include "task_webserver.h"
 #include "soil_moisture_sensor.h"
 DHT20 dht20;
-// I2C LCD: address 33 (0x21), 16x2
+
 LiquidCrystal_I2C lcd(33, 16, 2);
-// Khai báo lại các hàm cho đúng
+
 static float convertSoilMoistureToPercent(int rawAdc);
 static void updateLcd(float temperature, float humidity, float soilMoisturePercent);
 static void sendSensorToWeb(float temperature, float humidity, float soilMoisturePercent);
@@ -97,7 +97,8 @@ void temp_humi_monitor(void *pvParameters)
 
 static float convertSoilMoistureToPercent(int rawAdc)
 {
-  long mapped = map(rawAdc, SOIL_ADC_DRY, SOIL_ADC_WET, 0, 100);
+
+  long mapped = map(rawAdc, SOIL_ADC_WET, SOIL_ADC_DRY, 0, 100);
   mapped = constrain(mapped, 0, 100);
   return (float)mapped;
 }
@@ -111,7 +112,7 @@ static void updateLcd(float temperature, float humidity, float soilMoisturePerce
   lcd.print(soilMoisturePercent, 0);
   lcd.print("%");
 
-  // Dòng 2: In nhiệt độ & độ ẩm
+
   lcd.setCursor(0, 1);
   lcd.print("T:");
   lcd.print(temperature, 1);
@@ -134,3 +135,4 @@ static void sendSensorToWeb(float temperature, float humidity, float soilMoistur
   serializeJson(doc, json);
   Webserver_sendata(json);
 }
+
